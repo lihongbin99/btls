@@ -50,6 +50,8 @@ func (t *TLSConn) ParseExtension(extensionType EXTENSION_TYPE, extensionLength u
 		return t.ParseExtensionCompressCertificate(base, extensionData)
 	case EXTENSION_SESSION_TICKET:
 		return t.ParseExtensionSessionTicket(base, extensionData)
+	case EXTENSION_PRE_SHARED_KEY:
+		return t.ParseExtensionPreSharedKey(base, extensionData)
 	case EXTENSION_SUPPORTED_VERSIONS:
 		return t.ParseExtensionSupportedVersion(base, extensionData)
 	case EXTENSION_PSK_KEY_EXCHANGE_MODES:
@@ -543,6 +545,66 @@ func (t *TLSConn) ParseExtensionSessionTicket(base BaseExtension, extensionData 
 	}
 	log.Trace("ParseExtensionSessionTicket:", data)
 	return &extensionSessionTicket, nil
+}
+
+type ExtensionPreSharedKey struct {
+	BaseExtension
+	IdentitiesLength uint16
+	PSKIdentity      PSKIdentity
+	PSKBindersLength uint16
+	PSKBinders       []byte
+}
+
+type PSKIdentity struct {
+	IdentityLength      uint16
+	Identity            []byte
+	ObfuscatedTicketAge uint32
+}
+
+func (t *ExtensionPreSharedKey) isExtensions() {}
+
+func (t *ExtensionPreSharedKey) ToBuf(conn *TLSConn) ([]byte, error) {
+	buf := make([]byte, 8)
+	buf[4] = byte((len(t.PSKIdentity.Identity) + 6) >> 8)
+	buf[5] = byte(len(t.PSKIdentity.Identity) + 6)
+	buf[6] = byte(len(t.PSKIdentity.Identity) >> 8)
+	buf[7] = byte(len(t.PSKIdentity.Identity))
+	buf = append(buf, t.PSKIdentity.Identity...)
+	buf = append(buf, Uint32toBuf(t.PSKIdentity.ObfuscatedTicketAge)...)
+	buf = append(buf, Uint16toBuf(uint16(len(t.PSKBinders)))...)
+	buf = append(buf, t.PSKBinders...)
+	baseExtensionToBuf(t.ExtensionType, buf)
+	return buf, nil
+}
+
+func (t *TLSConn) ParseExtensionPreSharedKey(base BaseExtension, extensionData []byte) (*ExtensionPreSharedKey, error) {
+	index := uint16(0)
+	identitiesLength := toUint16(extensionData)
+	index += 2
+	identityLength := toUint16(extensionData[index:])
+	index += 2
+	identity := make([]byte, identityLength)
+	copy(identity, extensionData[index:])
+	index += uint16(identityLength)
+	obfuscatedTicketAge := toUint32(extensionData[index:])
+	index += 4
+	pSKBindersLength := toUint16(extensionData[index:])
+	pSKBinders := make([]byte, pSKBindersLength)
+	copy(pSKBinders, extensionData[index:])
+
+	extensionPreSharedKey := ExtensionPreSharedKey{
+		BaseExtension:    base,
+		IdentitiesLength: identitiesLength,
+		PSKIdentity: PSKIdentity{
+			IdentityLength:      identityLength,
+			Identity:            identity,
+			ObfuscatedTicketAge: obfuscatedTicketAge,
+		},
+		PSKBindersLength: pSKBindersLength,
+		PSKBinders:       pSKBinders,
+	}
+	log.Trace("ParseExtensionPreSharedKey:", extensionPreSharedKey)
+	return &extensionPreSharedKey, nil
 }
 
 type ExtensionSupportedVersion struct {

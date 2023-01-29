@@ -10,8 +10,16 @@ func toUint16(buf []byte) uint16 {
 	return (uint16(buf[0]) << 8) | uint16(buf[1])
 }
 
+func toUint32(buf []byte) uint32 {
+	return (uint32(buf[0]) << 24) | (uint32(buf[1]) << 16) | (uint32(buf[2]) << 8) | uint32(buf[3])
+}
+
 func Uint16toBuf(n uint16) []byte {
 	return []byte{byte(n >> 8), byte(n & 0xFF)}
+}
+
+func Uint32toBuf(n uint32) []byte {
+	return []byte{byte(n >> 24), byte((n >> 16) & 0xFF), byte((n >> 8) & 0xFF), byte(n & 0xFF)}
 }
 
 type uint24 uint32
